@@ -1,11 +1,11 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import TagsInput from 'react-tagsinput';
 import 'react-tagsinput/react-tagsinput.css';
 import Dropzone from 'react-dropzone'
-
+import axios from 'axios';
 
 const CreateProduct = (props) => {
-
+    const [productImages, setProductImages] = useState([]);
     const [productVariantPrices, setProductVariantPrices] = useState([])
 
     const [productVariants, setProductVariant] = useState([
@@ -14,12 +14,53 @@ const CreateProduct = (props) => {
             tags: []
         }
     ])
-    console.log(typeof props.variants)
+
+    useEffect(() => {
+        if (props.product !== undefined) {
+            // Group product variants by variant option
+            const groupedVariants = product.product_variants.reduce((acc, variant) => {
+                acc[variant.variant] = acc[variant.variant] || [];
+                acc[variant.variant].push({
+                    id: variant.id,
+                    variant_title: variant.variant_title
+                });
+                return acc;
+            }, {});
+            const filteredVariants = Object.keys(groupedVariants).map(option => ({
+                option: parseInt(option),
+                tags: groupedVariants[option].map(variant => variant.variant_title),
+                ids: groupedVariants[option].map(variant => variant.id)
+            }));
+            setProductVariant(filteredVariants);
+            product.product_variant_price.map((item) => {
+                setProductVariantPrices(productVariantPrice => [...productVariantPrice, {
+                    title: `${item.product_variant_one.variant_title}/${item.product_variant_two.variant_title}/${item.product_variant_three.variant_title}`,
+                    price: item.price,
+                    stock: item.stock
+                }])
+            })
+
+        }
+    }, [props.product]);
+
+    const initialProductValues = {
+        id: props.product !== undefined ? product.id : '',
+        title: props.product !== undefined ? product.title : '',
+        sku: props.product !== undefined ? product.sku : '',
+        description: props.product !== undefined ? product.description : '',
+    }
+
+    const handleDrop = (acceptedFiles) => {
+        // Update the productImages state with the accepted files
+        setProductImages(acceptedFiles);
+    };
+
     // handle click event of the Add button
     const handleAddClick = () => {
         let all_variants = JSON.parse(props.variants.replaceAll("'", '"')).map(el => el.id)
         let selected_variants = productVariants.map(el => el.option);
         let available_variants = all_variants.filter(entry1 => !selected_variants.some(entry2 => entry1 == entry2))
+        console.log(available_variants[0])
         setProductVariant([...productVariants, {
             option: available_variants[0],
             tags: []
@@ -62,6 +103,24 @@ const CreateProduct = (props) => {
 
     }
 
+    const handlePriceChange = (event, index) => {
+        const {value} = event.target;
+        setProductVariantPrices(prevPrices => {
+            const newPrices = [...prevPrices];
+            newPrices[index].price = value; // Update price for the specified index
+            return newPrices;
+        });
+    };
+
+    const handleStockChange = (event, index) => {
+        const {value} = event.target;
+        setProductVariantPrices(prevPrices => {
+            const newPrices = [...prevPrices];
+            newPrices[index].stock = value; // Update stock for the specified index
+            return newPrices;
+        });
+    };
+
     // combination algorithm
     function getCombn(arr, pre) {
         pre = pre || '';
@@ -74,10 +133,50 @@ const CreateProduct = (props) => {
         return ans;
     }
 
+    axios.defaults.xsrfCookieName = 'csrftoken';
+    axios.defaults.xsrfHeaderName = 'X-CSRFToken';
+
     // Save product
-    let saveProduct = (event) => {
+    const saveProduct = (event) => {
         event.preventDefault();
-        // TODO : write your code here to save the product
+        // Gather data from form fields
+        const productName = document.getElementById("product-name").value;
+        const productSKU = document.getElementById("product-sku").value;
+        const description = document.getElementById("product-description").value;
+
+        const productData = {
+            id: initialProductValues.id,
+            title: productName,
+            sku: productSKU,
+            description: description,
+            product_variants: productVariants,
+            product_variant_price: productVariantPrices,
+            product_images: productImages,
+        };
+
+        if (props.product === undefined) {
+            axios.post('/product/create/api/', productData)
+                .then(response => {
+                    // Handle success
+                    console.log('Product saved successfully:', response.data);
+
+                })
+                .catch(error => {
+                    // Handle error
+                    console.error('Error saving product:', error);
+                });
+        } else {
+            axios.put(`/product/update/${productData.id}/api/`, productData)
+                .then(response => {
+                    // Handle success
+                    console.log('Product saved successfully:', response.data);
+                    // Redirect or perform other actions if needed
+                })
+                .catch(error => {
+                    // Handle error
+                    console.error('Error saving product:', error);
+                });
+        }
     }
 
 
@@ -89,16 +188,22 @@ const CreateProduct = (props) => {
                         <div className="card shadow mb-4">
                             <div className="card-body">
                                 <div className="form-group">
-                                    <label htmlFor="">Product Name</label>
-                                    <input type="text" placeholder="Product Name" className="form-control"/>
+                                    <label htmlFor="product-name">Product Name</label>
+                                    <input id='product-name' defaultValue={initialProductValues.title} type="text"
+                                           placeholder="Product Name"
+                                           className="form-control"/>
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="">Product SKU</label>
-                                    <input type="text" placeholder="Product Name" className="form-control"/>
+                                    <label htmlFor="product-sku">Product SKU</label>
+                                    <input id='product-sku' type="text" defaultValue={initialProductValues.sku}
+                                           placeholder="Product Name"
+                                           className="form-control"/>
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="">Description</label>
-                                    <textarea id="" cols="30" rows="4" className="form-control"></textarea>
+                                    <label htmlFor="product-description">Description</label>
+                                    <textarea id="product-description" cols="30" rows="4"
+                                              className="form-control"
+                                              defaultValue={initialProductValues.description}></textarea>
                                 </div>
                             </div>
                         </div>
@@ -109,7 +214,7 @@ const CreateProduct = (props) => {
                                 <h6 className="m-0 font-weight-bold text-primary">Media</h6>
                             </div>
                             <div className="card-body border">
-                                <Dropzone onDrop={acceptedFiles => console.log(acceptedFiles)}>
+                                <Dropzone onDrop={handleDrop}>
                                     {({getRootProps, getInputProps}) => (
                                         <section>
                                             <div {...getRootProps()}>
@@ -196,17 +301,21 @@ const CreateProduct = (props) => {
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        {
-                                            productVariantPrices.map((productVariantPrice, index) => {
-                                                return (
-                                                    <tr key={index}>
-                                                        <td>{productVariantPrice.title}</td>
-                                                        <td><input className="form-control" type="text"/></td>
-                                                        <td><input className="form-control" type="text"/></td>
-                                                    </tr>
-                                                )
-                                            })
-                                        }
+                                        {productVariantPrices.map((productVariantPrice, index) => {
+                                            return (
+                                                <tr key={index}>
+                                                    <td>{productVariantPrice.title}</td>
+                                                    <td><input className="form-control" name="price" type="number"
+                                                               value={productVariantPrice.price}
+                                                               onChange={(event) => handlePriceChange(event, index)}/>
+                                                    </td>
+                                                    <td><input className="form-control" name="stock" type="number"
+                                                               value={productVariantPrice.stock}
+                                                               onChange={(event) => handleStockChange(event, index)}/>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                         </tbody>
                                     </table>
                                 </div>
